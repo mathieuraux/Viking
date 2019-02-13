@@ -1,11 +1,11 @@
 #!/bin/bash
 
 #Fonction d'initialisation du menu
-function initmenu() {
+function installmenu() {
 	whiptail --title "Viking" --separate-output --checklist "Selectionner les produits à installer" 15 60 4 \
 		SAMBA_INSTALL "Samba" ON \
 		OPENVPN_INSTALL "OpenVPN" ON \
-		ZABBIX_INSTALL "Zabbix" OFF 2>todoo
+		URBACKUP_INSTALL "UrBackup" OFF 2>todoo
 	while read soft; do
 		if [ $soft = "SAMBA_INSTALL" ]; then
 			samba_installation
@@ -15,17 +15,18 @@ function initmenu() {
 
 function samba_installation() {
 	if [ ! -e /usr/local/samba/sbin/samba ]; then
-		yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
-		echo -e "###########################################################\n
+		echo -e "\n###########################################################\n
 	############### Installation de Samba 4 AD ################\n
 	###########################################################\n"
-		yum install attr bind-utils docbook-style-xsl gcc gdb krb5-workstation \
+		echo "Installation des packets nécessaires"
+		yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+		yum install -y attr bind-utils docbook-style-xsl gcc gdb krb5-workstation \
 		       libsemanage-python libxslt perl perl-ExtUtils-MakeMaker \
 		       perl-Parse-Yapp perl-Test-Base pkgconfig policycoreutils-python \
 		       python2-crypto gnutls-devel libattr-devel keyutils-libs-devel \
 		       libacl-devel libaio-devel libblkid-devel libxml2-devel openldap-devel \
 		       pam-devel popt-devel python-devel readline-devel zlib-devel systemd-devel \
-		       lmdb-devel jansson-devel gpgme-devel pygpgme libarchive-devel winbind
+		       lmdb-devel jansson-devel gpgme-devel pygpgme libarchive-devel winbind wget lmdb-devel
 		if [ ! -d /tmp/samba ]; then
 			mkdir /tmp/samba
 		else
@@ -33,11 +34,15 @@ function samba_installation() {
 			mkdir /tmp/samba
 		fi
 		cd /tmp/samba
+		echo "Téléchargement de Samba"
 		wget https://download.samba.org/pub/samba/stable/samba-4.9.4.tar.gz
+		echo "Extraction..."
 		tar xvf samba-4.9.4.tar.gz
 		cd samba-4.9.4
+		echo "Test de la configuration avant installation"
 		./configure
 		if [ $? = 0 ]; then
+			echo "Installation de Samba"
 			make
 			make install
 		else
@@ -47,25 +52,27 @@ function samba_installation() {
 			echo "Réglage du pare-feu"
 			firewall-cmd --permanent --add-port=53/udp
 			firewall-cmd --permanent --add-port=53/tcp
-			firewall-cmd 
+			firewall-cmd --permanent --add-service=samba
 			firewall-cmd --reload
 
 			echo "Création du démon"
 			systemctl mask smbd nmbd winbind
 			systemctl disable smbd nmbd winbind
 
-			echo '[Unit]
-			Description=Samba Active Directory Domain Controller
-			After=network.target remote-fs.target nss-lookup.target
+			if [ ! -e /etc/systemd/system/samba-ad-dc.service ]; then
+				echo '[Unit]
+				Description=Samba Active Directory Domain Controller
+				After=network.target remote-fs.target nss-lookup.target
 
-			[Service]
-			Type=forking
-			ExecStart=/usr/local/samba/sbin/samba -D
-			PIDFile=/usr/local/samba/var/run/samba.pid
-			ExecReload=/bin/kill -HUP $MAINPID
+				[Service]
+				Type=forking
+				ExecStart=/usr/local/samba/sbin/samba -D
+				PIDFile=/usr/local/samba/var/run/samba.pid
+				ExecReload=/bin/kill -HUP $MAINPID
 
-			[Install]
-			WantedBy=multi-user.target' > /etc/systemd/system/samba-ad-dc.service
+				[Install]
+				WantedBy=multi-user.target' > /etc/systemd/system/samba-ad-dc.service
+			fi
 
 			systemctl enable samba-ad-dc
 
