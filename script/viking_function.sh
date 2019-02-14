@@ -1,4 +1,7 @@
 #!/bin/bash
+OPEN_VPN_SACLI=/usr/local/openvpn_as/script/sacli
+SAMBA_CONF_FILE="/usr/local/samba/etc/smb.conf"
+SAMBA_TOOL=/usr/local/samba/bin/samba-tool
 
 #Fonction d'initialisation du menu
 function installmenu() {
@@ -26,7 +29,7 @@ function samba_installation() {
 		       python2-crypto gnutls-devel libattr-devel keyutils-libs-devel \
 		       libacl-devel libaio-devel libblkid-devel libxml2-devel openldap-devel \
 		       pam-devel popt-devel python-devel readline-devel zlib-devel systemd-devel \
-		       lmdb-devel jansson-devel gpgme-devel pygpgme libarchive-devel winbind wget lmdb-devel
+		       lmdb-devel jansson-devel gpgme-devel pygpgme libarchive-devel winbind wget lmdb-devel pwgen
 		if [ ! -d /tmp/samba ]; then
 			mkdir /tmp/samba
 		else
@@ -46,7 +49,7 @@ function samba_installation() {
 			make
 			make install
 		else
-			echo "ERREUR : La configuration de samba a échoué"
+			echo "ERREUR : L'installation de samba a échoué"
 		fi
 		if [ -d /usr/local/samba/bin ]; then
 			echo "Réglage du pare-feu"
@@ -54,6 +57,9 @@ function samba_installation() {
 			firewall-cmd --permanent --add-port=53/tcp
 			firewall-cmd --permanent --add-service=samba
 			firewall-cmd --reload
+
+			sed '/\[global\]/a\\ttls verify peer = no_check' $SAMBA_CONF_FILE > $SAMBA_CONF_FILE
+			sed '/\[global\]/a\\tldap server require strong auth = no' $SAMBA_CONF_FILE > $SAMBA_CONF_FILE
 
 			echo "Création du démon"
 			systemctl mask smbd nmbd winbind
@@ -102,10 +108,37 @@ function samba_configuration() {
 			domain_password=$(whiptail --title "Choix du mot de passe Administrator" --passwordbox "Votre mot de passe : " 10 60 3>&1 1>&2 2>&3)
 		fi
 
-		/usr/local/samba/bin/samba-tool domain provision  --use-rfc2307 --realm='''$domain''' --domain '''$netbios''' --server-role=dc --adminpass=$domain_password
+		$SAMBA_TOOL domain provision  --use-rfc2307 --realm='''$domain''' --domain '''$netbios''' --server-role=dc --adminpass=$domain_password
 		cp /usr/local/samba/private/krb5.conf /etc/krb5.conf
 	fi
 }
 function openvpn_installation() {
-	echo "en cours..."
+	echo "Installation d'OpenVPN"
+	if [ ! -d /usr/local/openvpn_as/ ]; then
+		echo "Configuration du pare-feu"
+		firewall-cmd --permanent --add-services openvpn
+
+		rpm --install https://openvpn.net/downloads/openvpn-as-latest-CentOS7.x86_64.rpm
+		if [ $? = 0 ]; then
+			whiptail --title "Installation d'OpenVPN" --msgbox "L'installation d'OpenVPN est terminé" 10 60
+		fi
+	else
+		whiptail --title "Installation d'OpenVPN" --msgbox "OpenVPN est déjà installé sur ce serveur" 10 60
+	fi
+}
+function openvpn_configuration() {
+	echo "Creation de l'utilisateur openvpn"
+	$password_openvpn=`pwgen 16`
+	isOpenVPNAlive = $SAMBA_TOOL user list
+	if ! grep openvpn $isOpenVPNAline; then
+		$SAMBA_TOOL user create openvpn $password_openvpn
+	fi
+
+	echo "Liaison à l'AD"
+	$OPEN_VPN_SACLI "auth.module.type" --value "ldap" ConfigPut
+	$OPEN_VPN_SACLI --key "auth.ldap.0.server.0.host" --value $ldap_ip ConfigPut
+	$OPEN_VPN_SACLI --key "auth.ldap.0.bind_dn" --value $ad_user ConfigPut
+	$OPEN_VPN_SACLI --key "auth.ldap.0.bind_pw" --value $ad_user_password ConfigPut
+	$OPEN_VPN_SACLI --key "auth.ldap.0.users_base_dn" --value "CN=Users, DC=swap, DC=dev" ConfigPut
+	$OPEN_VPN_SACLI start
 }

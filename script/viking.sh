@@ -7,7 +7,13 @@ source ./viking_function.sh
 while getopts ":h" option; do
 	case "${option}" in
 		h)
-			echo "help"
+			echo "Usage: $0 [OPTION] <ARG1> <ARG2> ...
+$0 : Interactive mod
+$0 samba-install : Install Samba 4 without config it
+$0 samba-configure <domain.tld> <netbios> <domain password> : Configure Samba 4
+$0 openvpn-install : Install OpenVPN without config it
+$0 openvpn-configure : Configure OpenVPN with LDAP authentification
+$0 urbackup-install : Install UrBackup"
 		;;
 	esac
 done
