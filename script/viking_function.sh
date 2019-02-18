@@ -5,7 +5,7 @@ SAMBA_TOOL=/usr/local/samba/bin/samba-tool
 
 #Fonction d'initialisation du menu
 function installmenu() {
-	whiptail --title "Viking" --separate-output --checklist "Selectionner les produits à installer" 15 60 4 \
+	whiptail --title "Viking" --separate-output --checklist "Selectionner les services à installer" 15 60 4 \
 		SAMBA_INSTALL "Samba" ON \
 		OPENVPN_INSTALL "OpenVPN" ON \
 		URBACKUP_INSTALL "UrBackup" OFF 2>todoo
@@ -15,7 +15,20 @@ function installmenu() {
 		fi
 	done < todoo
 }
+function configmenu() {
+	CONFMENU=$(whiptail --title "Viking" --menu "Configurer un service" 15 60 4 \
+		"Samba" "Définir une nouvelle configuration de Samba" \
+		"OpenVPN" "Relier l'AD et OpenVPN" 3>&1 1>&2 2>&3)
 
+	case $CONFMENU in
+		"Samba")
+			samba_configuration
+		;;
+		"OpenVPN")
+			openvpn_configuration
+		;;
+		esac
+}
 function samba_installation() {
 	if [ ! -e /usr/local/samba/sbin/samba ]; then
 		echo -e "\n###########################################################\n
@@ -127,12 +140,15 @@ function openvpn_installation() {
 	fi
 }
 function openvpn_configuration() {
+	ad_user="openvpn"
+	ad_user_password=`pwgen 16`
+
 	echo "Creation de l'utilisateur openvpn"
-	$password_openvpn=`pwgen 16`
 	isOpenVPNAlive = $SAMBA_TOOL user list
-	if ! grep openvpn $isOpenVPNAline; then
+	if ! grep $ad_user $isOpenVPNAline; then
 		$SAMBA_TOOL user create openvpn $password_openvpn
 	fi
+	ldap_ip=$(whiptail --title "Serveur LDAP" --inputbox "Adresse ou nom du serveur LDAP (Par défaut ce même serveur) :" 10 60 "domain.tld" 3>&1 1>&2 2>&3)
 
 	echo "Liaison à l'AD"
 	$OPEN_VPN_SACLI "auth.module.type" --value "ldap" ConfigPut

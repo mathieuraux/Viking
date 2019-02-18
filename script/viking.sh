@@ -29,6 +29,9 @@ if [ -z $@ ]; then
 		"Installation")
 			installmenu
 		;;
+		"Configuration")
+			configmenu
+		;;
 		"Quitter")
 			exit
 		;;
