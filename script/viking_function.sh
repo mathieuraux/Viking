@@ -1,5 +1,5 @@
 #!/bin/bash
-OPEN_VPN_SACLI=/usr/local/openvpn_as/script/sacli
+OPEN_VPN_SACLI=/usr/local/openvpn_as/scripts/sacli
 SAMBA_CONF_FILE="/usr/local/samba/etc/smb.conf"
 SAMBA_TOOL=/usr/local/samba/bin/samba-tool
 
@@ -8,12 +8,16 @@ function installmenu() {
 	whiptail --title "Viking" --separate-output --checklist "Selectionner les services à installer" 15 60 4 \
 		SAMBA_INSTALL "Samba" ON \
 		OPENVPN_INSTALL "OpenVPN" ON \
-		URBACKUP_INSTALL "UrBackup" OFF 2>todoo
+		URBACKUP_INSTALL "UrBackup" OFF 2>/tmp/todoo
 	while read soft; do
 		if [ $soft = "SAMBA_INSTALL" ]; then
 			samba_installation
+		elif [ $soft = "OPENVPN_INSTALL" ]; then
+			openvpn_installation
+		elif [ $soft = "URBACKUP_INSTALL" ]; then
+			urbackup_installation
 		fi
-	done < todoo
+	done < /tmp/todoo
 }
 function configmenu() {
 	CONFMENU=$(whiptail --title "Viking" --menu "Configurer un service" 15 60 4 \
@@ -32,8 +36,8 @@ function configmenu() {
 function samba_installation() {
 	if [ ! -e /usr/local/samba/sbin/samba ]; then
 		echo -e "\n###########################################################\n
-	############### Installation de Samba 4 AD ################\n
-	###########################################################\n"
+############### Installation de Samba 4 AD ################\n
+###########################################################\n"
 		echo "Installation des packets nécessaires"
 		yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
 		yum install -y attr bind-utils docbook-style-xsl gcc gdb krb5-workstation \
@@ -111,6 +115,14 @@ function samba_configuration() {
 	netbios=$2
 	domain_password=$3
 	if (whiptail --title "Configuration de Samba" --yesno "Voulez-vous procéder à la configuration de Samba ?" 10 60); then
+		echo "Arrêt du service Samba"
+		systemctl stop samba-ad-dc
+
+		echo "Test présence ancien fichier conf"
+		if [ -e /usr/local/samba/etc/smb.conf ]; then
+			rm /usr/local/samba/etc/smb.conf
+		fi
+
 		if [ -z "$domain" ]; then
 			domain=$(whiptail --title "Choix du domaine" --inputbox "Votre nom de domaine : " 10 60 "domain.tld" 3>&1 1>&2 2>&3)
 		fi
@@ -126,8 +138,8 @@ function samba_configuration() {
 	fi
 }
 function openvpn_installation() {
-	echo "Installation d'OpenVPN"
 	if [ ! -d /usr/local/openvpn_as/ ]; then
+		echo "Installation d'OpenVPN"
 		echo "Configuration du pare-feu"
 		firewall-cmd --permanent --add-services openvpn
 
@@ -137,24 +149,39 @@ function openvpn_installation() {
 		fi
 	else
 		whiptail --title "Installation d'OpenVPN" --msgbox "OpenVPN est déjà installé sur ce serveur" 10 60
+		installmenu
 	fi
 }
 function openvpn_configuration() {
 	ad_user="openvpn"
 	ad_user_password=`pwgen 16`
+	ldap_ip="127.0.0.1"
+
+	isOpenVPNAlive=`$SAMBA_TOOL user list`
+	if echo $isOpenVPNAlive | grep --quiet $ad_user ; then
+		$SAMBA_TOOL user delete openvpn	
+	fi
 
 	echo "Creation de l'utilisateur openvpn"
-	isOpenVPNAlive = $SAMBA_TOOL user list
-	if ! grep $ad_user $isOpenVPNAline; then
-		$SAMBA_TOOL user create openvpn $password_openvpn
-	fi
-	ldap_ip=$(whiptail --title "Serveur LDAP" --inputbox "Adresse ou nom du serveur LDAP (Par défaut ce même serveur) :" 10 60 "domain.tld" 3>&1 1>&2 2>&3)
+	$SAMBA_TOOL user create openvpn "$ad_user_password"
+
+	echo "Configuration Web"
+	$OPEN_VPN_SACLI --key "cs.https.port" --value "444" ConfigPut
 
 	echo "Liaison à l'AD"
-	$OPEN_VPN_SACLI "auth.module.type" --value "ldap" ConfigPut
+	$OPEN_VPN_SACLI --key "auth.module.type" --value "ldap" ConfigPut
 	$OPEN_VPN_SACLI --key "auth.ldap.0.server.0.host" --value $ldap_ip ConfigPut
-	$OPEN_VPN_SACLI --key "auth.ldap.0.bind_dn" --value $ad_user ConfigPut
+	$OPEN_VPN_SACLI --key "auth.ldap.0.bind_dn" --value "CN=$ad_user, CN=Users, DC=swap, DC=dev" ConfigPut
 	$OPEN_VPN_SACLI --key "auth.ldap.0.bind_pw" --value $ad_user_password ConfigPut
 	$OPEN_VPN_SACLI --key "auth.ldap.0.users_base_dn" --value "CN=Users, DC=swap, DC=dev" ConfigPut
+
+	echo "Elevation des privilèges du compte administrateur du domaine"
+	$OPEN_VPN_SACLI --user Administrator --key "prop_superuser" --value "true" UserPropPut
+
 	$OPEN_VPN_SACLI start
+}
+function urbackup_installation() {
+	cd /etc/yum.repos.d/
+	wget https://download.opensuse.org/repositories/home:uroni/CentOS_7/home:uroni.repo
+	yum install urbackup-server
 }
