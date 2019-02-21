@@ -141,11 +141,12 @@ function openvpn_installation() {
 	if [ ! -d /usr/local/openvpn_as/ ]; then
 		echo "Installation d'OpenVPN"
 		echo "Configuration du pare-feu"
-		firewall-cmd --permanent --add-services openvpn
+		firewall-cmd --permanent --add-service=openvpn
 
 		rpm --install https://openvpn.net/downloads/openvpn-as-latest-CentOS7.x86_64.rpm
 		if [ $? = 0 ]; then
 			whiptail --title "Installation d'OpenVPN" --msgbox "L'installation d'OpenVPN est terminé" 10 60
+			openvpn_configuration
 		fi
 	else
 		whiptail --title "Installation d'OpenVPN" --msgbox "OpenVPN est déjà installé sur ce serveur" 10 60
