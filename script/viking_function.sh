@@ -2,6 +2,7 @@
 OPEN_VPN_SACLI=/usr/local/openvpn_as/scripts/sacli
 SAMBA_CONF_FILE="/usr/local/samba/etc/smb.conf"
 SAMBA_TOOL=/usr/local/samba/bin/samba-tool
+HOSTNAME=`hostname -s`
 
 #Fonction d'initialisation du menu
 function installmenu() {
@@ -10,12 +11,14 @@ function installmenu() {
 		OPENVPN_INSTALL "OpenVPN" ON \
 		URBACKUP_INSTALL "UrBackup" OFF 2>/tmp/todoo
 	while read soft; do
-		if [ $soft = "SAMBA_INSTALL" ]; then
+		if [ $soft = "SAMB_INSTALL" ]; then
 			samba_installation
 		elif [ $soft = "OPENVPN_INSTALL" ]; then
 			openvpn_installation
 		elif [ $soft = "URBACKUP_INSTALL" ]; then
 			urbackup_installation
+		else
+			installmenu
 		fi
 	done < /tmp/todoo
 }
@@ -27,9 +30,11 @@ function configmenu() {
 	case $CONFMENU in
 		"Samba")
 			samba_configuration
+			configmenu
 		;;
 		"OpenVPN")
 			openvpn_configuration
+			configmenu
 		;;
 		esac
 }
@@ -74,9 +79,6 @@ function samba_installation() {
 			firewall-cmd --permanent --add-port=53/tcp
 			firewall-cmd --permanent --add-service=samba
 			firewall-cmd --reload
-
-			sed '/\[global\]/a\\ttls verify peer = no_check' $SAMBA_CONF_FILE > $SAMBA_CONF_FILE
-			sed '/\[global\]/a\\tldap server require strong auth = no' $SAMBA_CONF_FILE > $SAMBA_CONF_FILE
 
 			echo "Création du démon"
 			systemctl mask smbd nmbd winbind
@@ -134,7 +136,19 @@ function samba_configuration() {
 		fi
 
 		$SAMBA_TOOL domain provision  --use-rfc2307 --realm='''$domain''' --domain '''$netbios''' --server-role=dc --adminpass=$domain_password
+        sed 's/\[global\]/\[global\]\n\ttls verify peer = no_check\n\tldap server require strong auth = no/' $SAMBA_CONF_FILE | tee $SAMBA_CONF_FILE
 		cp /usr/local/samba/private/krb5.conf /etc/krb5.conf
+
+        echo "Configuration du système"
+
+        echo "$HOSTNAME.$domain" > /etc/hostname
+        hostnamectl set-hostname "$HOSTNAME.$domain"
+
+        echo "search $domain
+        nameserver 127.0.0.1" > /etc/resolv.conf
+
+        systemctl restart samba-ad-dc
+
 	fi
 }
 function openvpn_installation() {
@@ -160,7 +174,7 @@ function openvpn_configuration() {
 
 	isOpenVPNAlive=`$SAMBA_TOOL user list`
 	if echo $isOpenVPNAlive | grep --quiet $ad_user ; then
-		$SAMBA_TOOL user delete openvpn	
+		$SAMBA_TOOL user delete openvpn
 	fi
 
 	echo "Creation de l'utilisateur openvpn"
@@ -169,12 +183,19 @@ function openvpn_configuration() {
 	echo "Configuration Web"
 	$OPEN_VPN_SACLI --key "cs.https.port" --value "444" ConfigPut
 
+    echo "Récupération des infos du domaine"
+
+    dc1=`hostname -d | cut -d. -f2`
+    dc2=`hostname -d | cut -d. -f1`
+
 	echo "Liaison à l'AD"
 	$OPEN_VPN_SACLI --key "auth.module.type" --value "ldap" ConfigPut
 	$OPEN_VPN_SACLI --key "auth.ldap.0.server.0.host" --value $ldap_ip ConfigPut
-	$OPEN_VPN_SACLI --key "auth.ldap.0.bind_dn" --value "CN=$ad_user, CN=Users, DC=swap, DC=dev" ConfigPut
+	$OPEN_VPN_SACLI --key "auth.ldap.0.bind_dn" --value "CN=$ad_user, CN=Users, DC=$dc2, DC=$dc1" ConfigPut
 	$OPEN_VPN_SACLI --key "auth.ldap.0.bind_pw" --value $ad_user_password ConfigPut
-	$OPEN_VPN_SACLI --key "auth.ldap.0.users_base_dn" --value "CN=Users, DC=swap, DC=dev" ConfigPut
+	$OPEN_VPN_SACLI --key "auth.ldap.0.users_base_dn" --value "CN=Users, DC=$dc2, DC=$dc1" ConfigPut
+
+    echo "Mot de passe openvpn : $ad_user_password"
 
 	echo "Elevation des privilèges du compte administrateur du domaine"
 	$OPEN_VPN_SACLI --user Administrator --key "prop_superuser" --value "true" UserPropPut
