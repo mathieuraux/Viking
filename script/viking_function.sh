@@ -17,8 +17,6 @@ function installmenu() {
 			openvpn_installation
 		elif [ $soft = "URBACKUP_INSTALL" ]; then
 			urbackup_installation
-		else
-			installmenu
 		fi
 	done < /tmp/todoo
 }
@@ -137,7 +135,11 @@ function samba_configuration() {
 
 		$SAMBA_TOOL domain provision  --use-rfc2307 --realm='''$domain''' --domain '''$netbios''' --server-role=dc --adminpass=$domain_password
         sed 's/\[global\]/\[global\]\n\ttls verify peer = no_check\n\tldap server require strong auth = no/' $SAMBA_CONF_FILE | tee $SAMBA_CONF_FILE
-		cp /usr/local/samba/private/krb5.conf /etc/krb5.conf
+
+        upper_dom=${$domain^^}
+        echo "default_realm = $upper_dom
+        dns_lookup_realm = false
+        dns_lookup_kdc = true" > /etc/krb5.conf
 
         echo "Configuration du système"
 
