@@ -11,7 +11,7 @@ function installmenu() {
 		OPENVPN_INSTALL "OpenVPN" ON \
 		URBACKUP_INSTALL "UrBackup" OFF 2>/tmp/todoo
 	while read soft; do
-		if [ $soft = "SAMB_INSTALL" ]; then
+		if [ $soft = "SAMBA_INSTALL" ]; then
 			samba_installation
 		elif [ $soft = "OPENVPN_INSTALL" ]; then
 			openvpn_installation
