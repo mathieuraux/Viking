@@ -8,15 +8,15 @@ HOSTNAME=`hostname -s`
 function installmenu() {
 	whiptail --title "Viking" --separate-output --checklist "Selectionner les services à installer" 15 60 4 \
 		SAMBA_INSTALL "Samba" ON \
-		OPENVPN_INSTALL "OpenVPN" ON \
+		OPENVPN_INSTALL "OpenVPN" OFF \
 		URBACKUP_INSTALL "UrBackup" OFF 2>/tmp/todoo
 	while read soft; do
 		if [ $soft = "SAMBA_INSTALL" ]; then
 			samba_installation
 		elif [ $soft = "OPENVPN_INSTALL" ]; then
 			openvpn_installation
-		elif [ $soft = "URBACKUP_INSTALL" ]; then
-			urbackup_installation
+		#elif [ $soft = "URBACKUP_INSTALL" ]; then
+		#	urbackup_installation
 		fi
 	done < /tmp/todoo
 }
